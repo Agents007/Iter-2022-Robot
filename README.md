@@ -1,6 +1,6 @@
 # Iter-2022-Robot
 
-2nd Collège Honoré Daumier 2022
+2nd Lycée Honoré Daumier 2022
 
 Objectif : suivre une ligne d'un point A à un point B n'importe soit elle.
 
