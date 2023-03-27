@@ -4,9 +4,9 @@ QTRSensors qtr;
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 
-float Kp = 0.06; 
+float Kp = 0.21;
 float Ki = 0; 
-float Kd = 0.5; 
+float Kd = 1.9; 
 
 int P;
 int I;
@@ -19,10 +19,10 @@ uint8_t vitesseCalibrage = 40;
 
 const double rapport = 11/10;
 
-const uint8_t maxspeeda = 150*rapport;
-const uint8_t maxspeedb = 150;
-const uint8_t basespeeda = 100*rapport;
-const uint8_t basespeedb = 100;
+const uint8_t maxspeedb = 255;
+const uint8_t maxspeeda = 255;
+const uint8_t basespeedb = 200*rapport;
+const uint8_t basespeeda = 200;
 
 #define aphase 13 // partie gauche
 #define aenbl 11

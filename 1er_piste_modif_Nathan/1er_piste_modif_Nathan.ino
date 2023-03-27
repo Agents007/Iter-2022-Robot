@@ -1,15 +1,15 @@
 #include <QTRSensors.h>
 #include <LiquidCrystal_I2C.h>
 
-LiquidCrystal_I2C lcd(0x3F,16,2);
+LiquidCrystal_I2C lcd(0x3F, 16, 2);
 QTRSensors qtr;
 
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 
-float Kp = 0.06; 
-float Ki = 0.0008; 
-float Kd = 0.8; 
+float Kp = 0.02;
+float Ki = 0;
+float Kd = 0.3;
 
 int P;
 int I;
@@ -19,13 +19,13 @@ int lastError = 0;
 boolean onoff = false;
 
 uint8_t vitesseCalibrage = 40;
-uint8_t vitesseTurn = 80;
+uint8_t vitesseTurn = 50;
 
-const double rapport = 11/10;
+const double rapport = 11 / 10;
 
-const uint8_t maxspeeda = 90*rapport;
+const uint8_t maxspeeda = 90 * rapport;
 const uint8_t maxspeedb = 90;
-const uint8_t basespeeda = 60*rapport;
+const uint8_t basespeeda = 60 * rapport;
 const uint8_t basespeedb = 60;
 
 #define aphase 13 // partie gauche
@@ -47,20 +47,37 @@ const int capteurDroit = 41;
 
 const int buttoncalibrate = 33;
 const int buttonstart = 32;
-const int buttonresetcompteur = 30;
+const int buttonresetcompteur = 31;
 
-const int nombreInter = 4;
-int variableGauche = 0;
-int variableDroite = 0;
-int variableGaucheI = 0;
-int variableDroiteI = 0;
+const int nombreInter = 1;
+int variable = 0;
+int variableI = 0;
 int compteur = 0;
 
+const int nbrVirage = 5;
+
+int gps[nbrVirage] = {6, 3, 3, 3, 2};
+
+int virage;
+
+/*
+1 = tourner Gauche E
+2 = tourner Droite E
+
+3 = tourner Gauche D
+4 = tourner Droite D
+
+5 = tourner Gauche J
+6 = tourner Droite J
+*/
 int sens;
+
 
 void setup() {
   qtr.setTypeRC();
-  qtr.setSensorPins((const uint8_t[]){46, 47, 48, 49, 50, 51, 52, 53}, SensorCount);
+  qtr.setSensorPins((const uint8_t[]) {
+    46, 47, 48, 49, 50, 51, 52, 53
+  }, SensorCount);
   qtr.setEmitterPin(7);//LEDON PIN
 
   pinMode(capteurGauche, INPUT);
@@ -70,95 +87,94 @@ void setup() {
   pinMode(aenbl, OUTPUT);
   pinMode(bphase, OUTPUT);
   pinMode(benbl, OUTPUT);
-  
+
   pinMode(ledMauvais, OUTPUT);
   pinMode(ledBon, OUTPUT);
   pinMode(ledTresBon, OUTPUT);
   pinMode(ledExellant, OUTPUT);
-  
+
   pinMode(ledcalibrage, OUTPUT);
-  
+
   pinMode(buttoncalibrate, INPUT_PULLUP);
   pinMode(buttonstart, INPUT_PULLUP);
 
   lcd.init();
-  lcd.begin(16,2);
-  
+  lcd.begin(16, 2);
+
   delay(500);
-  
+
   pinMode(5, OUTPUT);
 
   boolean Ok = false;
   while (Ok == false) {
-    if(digitalRead(buttoncalibrate) == LOW) {
+    if (digitalRead(buttoncalibrate) == LOW) {
       digitalWrite(ledcalibrage, HIGH);
       calibration();
       Ok = true;
     }
   }
   digitalWrite(ledcalibrage, LOW);
-   digitalWrite(ledMauvais, LOW);
-    digitalWrite(ledExellant, LOW);
+  digitalWrite(ledMauvais, LOW);
+  digitalWrite(ledExellant, LOW);
   forward_brake(0, 0);
 }
 
 //bonne chance pour capter :)
 void loop() {
-  if(digitalRead(buttonstart) == LOW) {
-    onoff =! onoff;
-    if(onoff = true) {
-      delay(1000);
+  if (digitalRead(buttonstart) == LOW) {
+    onoff = ! onoff;
+    if (onoff = true) {
+      delay(100);
     }
     else {
       delay(50);
     }
   }
-  /*if(digitalRead(buttonresetcompteur) == LOW){
-    compteur = 0;
-    variableGauche = 0;
-    variableDroite = 0;
-    digitalWrite(ledMauvais, LOW);
-    digitalWrite(ledExellant, LOW);
+  /*
+  if (digitalRead(buttonresetcompteur) == LOW) {
+    digitalWrite(ledBon, HIGH);
+    variable= 0;
+    variableI = 0;
+  }
+  else{
+    digitalWrite(ledBon, LOW);
   }*/
   if (onoff == true) {
-    if (digitalRead(capteurGauche) == true){
-      if (variableGauche == 8){
-        tournerGauche();
+    if (digitalRead(capteurDroit) == true || digitalRead(capteurGauche) == true) {
+      virage = gps[variable];
+      if (virage <= 6 && virage >= 0){
+        switch (virage) {
+          case 2:
+            tournerDroiteE();
+          break;
+          case 6:
+            tournerDroiteJ();
+          break;
+          default:
+            sens = 3500;
+          break;
+        }
       }
       else{
         sens = 3500;
       }
-      if (variableGaucheI == 0){
-        variableGauche++;
-        variableGaucheI++;
+      if (variableI == 0) {
+        variable++;
+        variableI++;
         compteur++;
       }
     }
-    else if (digitalRead(capteurDroit) == true){
-      if (variableDroite == 2){
-        tournerDroite();
-      }
-      else{
-        sens = 3500;
-      }
-      if (variableDroiteI == 0){
-        variableDroite++;
-        variableDroiteI++;
-        compteur++;
-      }
-    }
-    else{
+    else {
       sens = 3500;
     }
     PID_control(sens);
-    if (digitalRead(capteurGauche) == false && digitalRead(capteurDroit) == false){
-      variableGaucheI = 0;
-      variableDroiteI = 0;
-      compteurEcran(variableDroite,variableGauche);
+    if (digitalRead(capteurGauche) == false && digitalRead(capteurDroit) == false) {
+      variableI = 0;
+      compteurEcran(variable, variable);
     }
   }
-  else{
-    forward_brake(0,0);
+  else {
+    forward_brake(0, 0);
   }
 }
 
@@ -176,15 +192,15 @@ void calibration() {
   for (uint16_t i = 0; i < 400; i++)
   {
     qtr.calibrate();
-    if (digitalRead(capteurGauche) == true){
+    if (digitalRead(capteurGauche) == true) {
       demiCercle(vitesseCalibrage, 1);
       digitalWrite(ledExellant, HIGH);
     }
-    else if (digitalRead(capteurDroit) == true){
+    else if (digitalRead(capteurDroit) == true) {
       demiCercle(vitesseCalibrage, 0);
       digitalWrite(ledMauvais, HIGH);
     }
-    else{
+    else {
       digitalWrite(ledExellant, LOW);
       digitalWrite(ledMauvais, LOW);
     }
@@ -194,31 +210,31 @@ void calibration() {
 //fonction de rotation simple sur l'axe Y(vertical).
 //les arguments sont la vitesse de déplacement et le sens (0 pour gauche et 1 pour droite).
 //Il est possible que les sens soient inversés.
-void demiCercle(int vitesse, bool sens){
-  if (sens == 0){
+void demiCercle(int vitesse, bool sens) {
+  if (sens == 0) {
     digitalWrite(aphase, HIGH);
     digitalWrite(bphase, LOW);
-    analogWrite(aenbl, vitesse*rapport);
+    analogWrite(aenbl, vitesse * rapport);
     analogWrite(benbl, vitesse);
   }
-  if (sens == 1){
+  if (sens == 1) {
     digitalWrite(aphase, LOW);
     digitalWrite(bphase, HIGH);
-    analogWrite(aenbl, vitesse*rapport);
+    analogWrite(aenbl, vitesse * rapport);
     analogWrite(benbl, vitesse);
   }
 }
 
-void compteurEcran(int x, int y){
+void compteurEcran(int x, int y) {
   lcd.backlight();
   lcd.clear();
-  lcd.setCursor(0,0);
+  lcd.setCursor(0, 0);
   lcd.print("D:");
-  lcd.setCursor(4,0);
+  lcd.setCursor(4, 0);
   lcd.print(x);
-   lcd.setCursor(0,1);
+  lcd.setCursor(0, 1);
   lcd.print("G:");
-  lcd.setCursor(4,1);
+  lcd.setCursor(4, 1);
   lcd.print(y);
 }
 
@@ -231,11 +247,11 @@ void PID_control(int consigne) {
   I = I + error;
   D = error - lastError;
   lastError = error;
-  int motorspeed = P*Kp + I*Ki + D*Kd; 
-  
+  int motorspeed = P * Kp + I * Ki + D * Kd;
+
   int motorspeeda = basespeeda + motorspeed;
   int motorspeedb = basespeedb - motorspeed;
-  
+
   if (motorspeeda > maxspeeda) {
     motorspeeda = maxspeeda;
   }
@@ -247,116 +263,120 @@ void PID_control(int consigne) {
   }
   if (motorspeedb < 0) {
     motorspeedb = 0;
-  } 
+  }
   forward_brake(motorspeeda, motorspeedb);
 }
 
-void tournerGauche(){
-  digitalWrite(ledBon, HIGH);
-  forward_brake(0,0);
-  if(digitalRead(capteurGauche) == false){
-    while(digitalRead(capteurGauche) == false){
-      reculerMoteurDroit(60);
-      avancerMoteurGauche(0);
+void tournerGaucheD(){
+  if(digitalRead(capteurDroit)){
+    while(digitalRead(capteurDroit)){
+      avancerMoteurGauche(vitesseTurn);
+      avancerMoteurDroit(vitesseTurn);
     }
   }
   forward_brake(0,0);
-  while(digitalRead(capteurDroit) == false){
+  while(!digitalRead(capteurDroit)){
+    avancerMoteurGauche(0);
+    avancerMoteurDroit(vitesseTurn);
+  }
+  forward_brake(0,0);
+  while(digitalRead(capteurDroit)){
+    avancerMoteurGauche(vitesseTurn);
     avancerMoteurDroit(0);
-    avancerMoteurGauche(60);
   }
   forward_brake(0,0);
-  if(digitalRead(capteurGauche) == false){
-    while(digitalRead(capteurGauche) == false){
-      reculerMoteurDroit(60);
-      avancerMoteurGauche(0);
+}
+
+void tournerDroiteJ(){
+  while(digitalRead(capteurGauche)){
+    avancerMoteurDroit(vitesseTurn);
+    avancerMoteurGauche(vitesseTurn);
+  }
+  forward_brake(0,0);
+  if(!digitalRead(capteurGauche)){
+    while(!digitalRead(capteurGauche)){
+      avancerMoteurGauche(vitesseTurn);
+      avancerMoteurDroit(0);
     }
   }
   forward_brake(0,0);
-  while(digitalRead(capteurGauche) == true){
-    reculerMoteurDroit(60);
+  while(digitalRead(capteurGauche)){
+    avancerMoteurDroit(vitesseTurn);
     avancerMoteurGauche(0);
   }
   forward_brake(0,0);
-  if(digitalRead(capteurDroit) == true){
-    while(digitalRead(capteurDroit) == true){
-      avancerMoteurDroit(0);
-      avancerMoteurGauche(60);
-    }
-  }
-  digitalWrite(ledBon, LOW);
 }
 
-void tournerDroite(){
+void tournerDroiteE(){
   digitalWrite(ledTresBon, HIGH);
   forward_brake(0,0);
   if(digitalRead(capteurDroit) == false){
     while(digitalRead(capteurDroit) == false){
-      reculerMoteurDroit(60);
+      reculerMoteurDroit(vitesseTurn);
       avancerMoteurGauche(0);
     }
   }
   forward_brake(0,0);
   while(digitalRead(capteurGauche) == false){
     avancerMoteurDroit(0);
-    avancerMoteurGauche(60);
+    avancerMoteurGauche(vitesseTurn);
   }
   forward_brake(0,0);
   if(digitalRead(capteurDroit) == false){
     while(digitalRead(capteurDroit) == false){
-      reculerMoteurDroit(60);
+      reculerMoteurDroit(vitesseTurn);
       avancerMoteurGauche(0);
     }
   }
   forward_brake(0,0);
   while(digitalRead(capteurDroit) == true){
-    reculerMoteurDroit(60);
+    reculerMoteurDroit(vitesseTurn);
     avancerMoteurGauche(0);
   }
   forward_brake(0,0);
   if(digitalRead(capteurGauche) == true){
     while(digitalRead(capteurGauche) == true){
       avancerMoteurDroit(0);
-      avancerMoteurGauche(60);
+      avancerMoteurGauche(vitesseTurn);
     }
   }
   digitalWrite(ledTresBon, LOW);
 }
-
-void avancerMoteurGauche(int vitesse){
+  
+void avancerMoteurGauche(int vitesse) {
   digitalWrite(bphase, LOW);
   analogWrite(benbl, vitesse);
 }
 
-void avancerMoteurDroit(int vitesse){
+void avancerMoteurDroit(int vitesse) {
   digitalWrite(aphase, LOW);
   analogWrite(aenbl, vitesse);
 }
 
-void reculerMoteurGauche(int vitesse){
+void reculerMoteurGauche(int vitesse) {
   digitalWrite(bphase, HIGH);
   analogWrite(benbl, vitesse);
 }
 
-void reculerMoteurDroit(int vitesse){
+void reculerMoteurDroit(int vitesse) {
   digitalWrite(aphase, HIGH);
   analogWrite(aenbl, vitesse);
 }
 
-void tourner(int vitesse, bool sens){
-  if (sens == 0){
+void tourner(int vitesse, bool sens) {
+  if (sens == 0) {
     digitalWrite(aphase, HIGH);
     digitalWrite(bphase, LOW);
-    analogWrite(aenbl, vitesse/2);
+    analogWrite(aenbl, vitesse / 2);
     analogWrite(benbl, vitesse);
   }
-  if (sens == 1){
+  if (sens == 1) {
     digitalWrite(aphase, LOW);
     digitalWrite(bphase, HIGH);
-    analogWrite(aenbl, vitesse*rapport);
-    analogWrite(benbl, vitesse*rapport/2);
+    analogWrite(aenbl, vitesse * rapport);
+    analogWrite(benbl, vitesse * rapport / 2);
   }
-}
+} 
 /*void testPID(uint16_t pos) {
   if (pos == 3500){
     digitalWrite(ledExellant, HIGH);
@@ -364,25 +384,25 @@ void tourner(int vitesse, bool sens){
   else {
     digitalWrite(ledExellant, LOW);
   }
-  
+
   if (pos >= 3000 && pos <= 4000){
     digitalWrite(ledTresBon, HIGH);
   }
   else {
     digitalWrite(ledTresBon, LOW);
   }
-  
+
   if (pos >= 2500 && pos <= 4500){
     digitalWrite(ledBon, HIGH);
   }
   else {
     digitalWrite(ledBon, LOW);
   }
-  
+
   if (pos >= 2000 && pos <= 5000){
     digitalWrite(ledMauvais, HIGH);
   }
   else {
     digitalWrite(ledMauvais, LOW);
   }
-}*/
+  }*/
